@@ -38,3 +38,5 @@ CREATE TABLE IF NOT EXISTS mensajes_grupos (
     FOREIGN KEY (id_grupo) REFERENCES grupos(id),
     FOREIGN KEY (author) REFERENCES usuarios(id)
 );
+
+ALTER TABLE usuarios ADD COLUMN fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
