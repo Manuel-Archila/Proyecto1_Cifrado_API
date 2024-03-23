@@ -78,7 +78,6 @@ def get_user_public_key(username):
     else:
         return jsonify({'error': 'Error al conectar con la base de datos'}), 500
 
-# PENDIENTE  
 @routes.route('/groups', methods=['GET'])
 def get_groups():
     if connection:
@@ -87,8 +86,8 @@ def get_groups():
         cursor.execute("""
             SELECT g.id, g.nombre, g.clave_simetrica, u.username
             FROM grupos g
-            LEFT JOIN usuarios_grupos ug ON g.id = ug.grupo_id
-            LEFT JOIN usuarios u ON ug.usuario_id = u.id;
+            LEFT JOIN usuarios_grupos ug ON g.id = ug.id_grupo
+            LEFT JOIN usuarios u ON ug.id_usuario = u.id;
         """)
         rows = cursor.fetchall()
         
@@ -114,9 +113,6 @@ def get_groups():
         return jsonify(groups_list)
     else:
         return jsonify({'error': 'Error al conectar con la base de datos'}), 500
-
-
-
 
 @routes.route('/messages/<string:user_destino>', methods=['POST'])
 def create_message(user_destino):
@@ -262,3 +258,183 @@ def update_user(username):
     except (Exception, psycopg2.DatabaseError) as error:
         connection.rollback()  # Revertir la transacción en caso de error
         return jsonify({'error': str(error)}), 500
+    
+from flask import jsonify
+
+@routes.route('/messages/users/<string:username_origen>/<string:username_destino>', methods=['GET'])
+def get_messages_between_users(username_origen, username_destino):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        # Obtener el ID del usuario de origen
+        cursor.execute("SELECT id FROM usuarios WHERE username = %s;", (username_origen,))
+        user_origen_id = cursor.fetchone()
+        if user_origen_id is None:
+            return jsonify({'error': f'Usuario de origen {username_origen} no encontrado'}), 404
+
+        # Obtener el ID del usuario de destino
+        cursor.execute("SELECT id FROM usuarios WHERE username = %s;", (username_destino,))
+        user_destino_id = cursor.fetchone()
+        if user_destino_id is None:
+            return jsonify({'error': f'Usuario de destino {username_destino} no encontrado'}), 404
+
+        # Obtener mensajes entre los usuarios
+        cursor.execute("""
+            SELECT m.id, m.mensaje_cifrado, uo.username AS username_origen, ud.username AS username_destino 
+            FROM mensajes m
+            JOIN usuarios uo ON m.id_username_origen = uo.id
+            JOIN usuarios ud ON m.id_username_destino = ud.id
+            WHERE (m.id_username_origen = %s AND m.id_username_destino = %s)
+            OR (m.id_username_origen = %s AND m.id_username_destino = %s)
+            ORDER BY m.id;
+            """, (user_origen_id[0], user_destino_id[0], user_destino_id[0], user_origen_id[0]))
+
+        messages = cursor.fetchall()
+        results = [{
+            'id': msg[0],
+            'message': msg[1],
+            'username_origen': msg[2],
+            'username_destino': msg[3]
+        } for msg in messages]
+
+        cursor.close()
+        return jsonify(results)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({'error': str(error)}), 500
+
+
+@routes.route('/users/key/<string:username>', methods=['DELETE'])
+def delete_user_public_key(username):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        # Verificar si el usuario existe
+        query_check_user = "SELECT id FROM usuarios WHERE username = %s;"
+        cursor.execute(query_check_user, (username,))
+        user_id = cursor.fetchone()
+
+        if user_id:
+            # Eliminar la clave pública del usuario
+            query_delete_public_key = "UPDATE usuarios SET public_key = NULL WHERE username = %s;"
+            cursor.execute(query_delete_public_key, (username,))
+            connection.commit()  # Realizar la transacción
+            cursor.close()
+            return jsonify({'message': f'Clave pública del usuario {username} eliminada exitosamente'}), 200
+        else:
+            return jsonify({'error': 'Usuario no encontrado'}), 404
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        connection.rollback()  # Revertir la transacción en caso de error
+        return jsonify({'error': str(error)}), 500
+
+
+@routes.route('/groups/<string:group>', methods=['DELETE'])
+def delete_group(group):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        # Verificar si el grupo existe
+        query_check_group = "SELECT id FROM grupos WHERE nombre = %s;"
+        cursor.execute(query_check_group, (group,))
+        group_id = cursor.fetchone()
+
+        if group_id:
+            # Eliminar todos los registros relacionados en la tabla usuarios_grupos
+            query_delete_user_group = "DELETE FROM usuarios_grupos WHERE id_grupo = %s;"
+            cursor.execute(query_delete_user_group, (group_id,))
+            
+            # Eliminar el grupo
+            query_delete_group = "DELETE FROM grupos WHERE nombre = %s;"
+            cursor.execute(query_delete_group, (group,))
+            
+            connection.commit()  # Realizar la transacción
+            cursor.close()
+            return jsonify({'message': f'Grupo {group} y sus registros relacionados eliminados exitosamente'}), 200
+        else:
+            return jsonify({'error': 'Grupo no encontrado'}), 404
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        connection.rollback()  # Revertir la transacción en caso de error
+        return jsonify({'error': str(error)}), 500
+
+
+@routes.route('/users/<string:username>', methods=['DELETE'])
+def delete_user(username):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        # Obtener el ID del usuario
+        query_get_user_id = "SELECT id FROM usuarios WHERE username = %s;"
+        cursor.execute(query_get_user_id, (username,))
+        user_id = cursor.fetchone()
+
+        if user_id:
+            user_id = user_id[0]  # Obtener el ID del usuario
+
+            # Eliminar registros relacionados en la tabla usuarios_grupos
+            query_delete_user_groups = "DELETE FROM usuarios_grupos WHERE id_usuario = %s;"
+            cursor.execute(query_delete_user_groups, (user_id,))
+
+            # Eliminar registros relacionados en la tabla mensajes
+            query_delete_user_messages = "DELETE FROM mensajes WHERE id_username_destino = %s OR id_username_origen = %s;"
+            cursor.execute(query_delete_user_messages, (user_id, user_id))
+
+            # Eliminar registros relacionados en la tabla mensajes_grupos
+            query_delete_user_group_messages = "DELETE FROM mensajes_grupos WHERE author = %s;"
+            cursor.execute(query_delete_user_group_messages, (user_id,))
+
+            # Eliminar el usuario
+            query_delete_user = "DELETE FROM usuarios WHERE username = %s;"
+            cursor.execute(query_delete_user, (username,))
+            
+            connection.commit()  # Realizar la transacción
+            cursor.close()
+            return jsonify({'message': f'Usuario {username} y sus registros relacionados eliminados exitosamente'}), 200
+        else:
+            return jsonify({'error': 'Usuario no encontrado'}), 404
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        connection.rollback()  # Revertir la transacción en caso de error
+        return jsonify({'error': str(error)}), 500
+
+
+@routes.route('/messages/groups/<int:id_group>', methods=['GET'])
+def get_group_messages(id_group):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        # Asegúrate de que las referencias a la tabla y columnas son correctas
+        cursor.execute("""
+            SELECT mg.id_grupo, u.username, mg.mensaje_cifrado
+            FROM mensajes_grupos mg
+            JOIN usuarios u ON mg.author = u.id
+            WHERE mg.id_grupo = %s;
+        """, (id_group,))
+
+        messages = cursor.fetchall()
+        results = [{
+            'id_group': msg[0],
+            'author': msg[1],
+            'mensaje': msg[2]
+        } for msg in messages]  # Asegúrate de que esto coincida con la selección de tu consulta
+
+        cursor.close()
+        return jsonify(results)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({'error': str(error)}), 500
+
