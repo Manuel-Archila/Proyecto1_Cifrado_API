@@ -1,8 +1,10 @@
 from flask import Flask
 from routes.routes import routes
-import psycopg2
+from flask_cors import CORS
 
 app = Flask(__name__)
+
+CORS(app)
 
 
 # Registrar el Blueprint de tus rutas
