@@ -60,7 +60,6 @@ def create_user():
 
 @routes.route('/users/<string:username>/public_key', methods=['GET'])
 def get_user_public_key(username):
-    print(username)
     if connection:
         cursor = connection.cursor()
         try:
@@ -239,11 +238,10 @@ def update_user(username):
 
     # Obtener datos del usuario desde el cuerpo de la solicitud
     user_data = request.get_json()
-    new_username = user_data.get('username')
     new_public_key = user_data.get('public_key')
 
     # Validar los datos recibidos
-    if not new_username or not new_public_key:
+    if not username or not new_public_key:
         return jsonify({'error': 'Falta información del usuario'}), 400
 
     try:
@@ -288,9 +286,8 @@ def get_messages_between_users(username_origen, username_destino):
             JOIN usuarios uo ON m.id_username_origen = uo.id
             JOIN usuarios ud ON m.id_username_destino = ud.id
             WHERE (m.id_username_origen = %s AND m.id_username_destino = %s)
-            OR (m.id_username_origen = %s AND m.id_username_destino = %s)
             ORDER BY m.id;
-            """, (user_origen_id[0], user_destino_id[0], user_destino_id[0], user_origen_id[0]))
+            """, (user_origen_id[0], user_destino_id[0]))
 
         messages = cursor.fetchall()
         results = [{
