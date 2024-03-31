@@ -27,7 +27,7 @@ def get_users():
         # Fetchall devuelve una lista de tuplas, convertimos cada tupla a un dict
         users = [{'id': row[0], 'username': row[1]} for row in cursor.fetchall()]
         cursor.close()
-        return jsonify({'users': users})
+        return jsonify(users)
     else:
         return jsonify({'error': 'Error al conectar con la base de datos'}), 500
 
@@ -58,7 +58,7 @@ def create_user():
         connection.rollback()  # Revertir la transacción en caso de error
         return jsonify({'error': str(error)}), 500
 
-@routes.route('/users/<string:username>/public_key', methods=['GET'])
+@routes.route('/users/<string:username>/key', methods=['GET'])
 def get_user_public_key(username):
     if connection:
         cursor = connection.cursor()
@@ -286,8 +286,9 @@ def get_messages_between_users(username_origen, username_destino):
             JOIN usuarios uo ON m.id_username_origen = uo.id
             JOIN usuarios ud ON m.id_username_destino = ud.id
             WHERE (m.id_username_origen = %s AND m.id_username_destino = %s)
+            OR (m.id_username_origen = %s AND m.id_username_destino = %s)
             ORDER BY m.id;
-            """, (user_origen_id[0], user_destino_id[0]))
+            """, (user_origen_id[0], user_destino_id[0], user_destino_id[0], user_origen_id[0]))
 
         messages = cursor.fetchall()
         results = [{
