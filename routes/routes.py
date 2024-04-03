@@ -227,6 +227,7 @@ def create_group():
         cursor.close()
         return jsonify({'message': 'Grupo creado exitosamente'}), 201
     except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
         connection.rollback()  # Revertir la transacción en caso de error
         return jsonify({'error': str(error)}), 500
 
@@ -349,6 +350,10 @@ def delete_group(group):
             # Eliminar todos los registros relacionados en la tabla usuarios_grupos
             query_delete_user_group = "DELETE FROM usuarios_grupos WHERE id_grupo = %s;"
             cursor.execute(query_delete_user_group, (group_id,))
+
+            # Eliminar todos los registros relacionados en la tabla mensajes_grupos
+            query_delete_group_messages = "DELETE FROM mensajes_grupos WHERE id_grupo = %s;"
+            cursor.execute(query_delete_group_messages, (group_id,))
             
             # Eliminar el grupo
             query_delete_group = "DELETE FROM grupos WHERE nombre = %s;"
@@ -435,4 +440,27 @@ def get_group_messages(id_group):
         return jsonify(results)
     except (Exception, psycopg2.DatabaseError) as error:
         return jsonify({'error': str(error)}), 500
+    
+@routes.route('/groups/<string:group>/password', methods=['GET'])
+def get_group_password(group):
+    if not connection:
+        return jsonify({'error': 'Error al conectar con la base de datos'}), 500
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+                       SELECT contrasena FROM grupos WHERE nombre = %s
+                       """, (group,))
+
+        password = cursor.fetchone()
+        if password:
+            return jsonify({'password': password[0]})
+        else:
+            return jsonify({'error': 'Grupo no encontrado'}), 404
+
+        cursor.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({'error': str(error)}), 500
+
 
